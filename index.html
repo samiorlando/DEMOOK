@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRT Broadcast Control Room & Protocol Simulator</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter & JetBrains Mono -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        studio: {
+                            base: '#0b0d12',
+                            panel: '#13161f',
+                            card: '#1a1e2b',
+                            border: '#2a3042',
+                            hover: '#343b52',
+                            blue: '#2563eb',
+                            green: '#10b981',
+                            amber: '#f59e0b',
+                            red: '#ef4444',
+                            purple: '#8b5cf6'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0b0d12;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #2a3042;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #343b52;
+        }
+        .mode-card-active {
+            border-color: #2563eb !important;
+            background-color: rgba(37, 99, 235, 0.1) !important;
+            box-shadow: 0 0 15px rgba(37, 99, 235, 0.2);
+        }
+        .pulse-live {
+            animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+    </style>
+</head>
+<body class="bg-studio-base text-gray-200 font-sans min-h-screen flex flex-col overflow-x-hidden selection:bg-studio-blue selection:text-white">
+
+    <header class="bg-studio-panel border-b border-studio-border px-4 py-2.5 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-40">
+        <div class="flex items-center space-x-3">
+            <div class="p-2 bg-blue-600/20 text-blue-400 rounded-lg border border-blue-500/30">
+                <i class="fa-solid fa-tower-cell text-xl"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-base tracking-wide flex items-center gap-2">
+                    SRT BROADCAST CONTROL ROOM
+                    <span class="text-[10px] font-mono px-2 py-0.5 bg-emerald-500/10 text-emerald-400 rounded border border-emerald-500/30">PRO MATRIX v3.0</span>
+                </h1>
+                <p class="text-[11px] text-gray-400">Simulador de Telemetría y Configuración de Socket SRT en Tiempo Real</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <button id="btn-open-cli" class="px-3 py-1.5 bg-studio-card hover:bg-studio-hover border border-studio-border text-xs text-blue-400 font-mono rounded flex items-center gap-2 transition">
+                <i class="fa-solid fa-terminal"></i> Generar Comandos CLI (FFmpeg/GStreamer)
+            </button>
+            <div id="master-status" class="flex items-center gap-2 px-3 py-1.5 rounded bg-gray-800/80 text-gray-400 border border-studio-border text-xs font-mono">
+                <span class="w-2.5 h-2.5 rounded-full bg-gray-500"></span>
+                <span>DESCONECTADO</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTROL LAYOUT -->
+    <main class="flex-1 p-4 grid grid-cols-1 lg:grid-cols-12 gap-4 max-w-[1920px] mx-auto w-full">
+
+        <section class="lg:col-span-12 bg-studio-panel border border-studio-border rounded-xl p-4 shadow-xl">
+            <div class="flex items-center justify-between border-b border-studio-border pb-3 mb-3">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-diagram-project text-blue-400"></i>
+                    <h2 class="font-bold text-xs tracking-wider uppercase text-gray-200">1. Selección de Modo de Conexión SRT (Handshake Protocol)</h2>
+                </div>
+                <span class="text-[11px] text-gray-400 font-mono" id="mode-explanation-badge">Modo Selección: CALLER</span>
+            </div>
+
+            <!-- Mode Selector Cards Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- CALLER CARD -->
+                <div id="card-mode-caller" onclick="selectSrtMode('caller')" class="mode-card-active bg-studio-card border border-studio-border hover:border-blue-500/50 p-3.5 rounded-lg cursor-pointer transition flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="font-bold text-sm text-blue-400 flex items-center gap-2">
+                                <i class="fa-solid fa-paper-plane"></i> CALLER (Llamador)
+                            </span>
+                            <span class="text-[10px] bg-blue-500/20 text-blue-300 font-mono px-1.5 py-0.5 rounded">CLIENTE</span>
+                        </div>
+                        <p class="text-xs text-gray-400 leading-relaxed">
+                            Inicia la llamada de conexión hacia una dirección IP pública y puerto específico donde un <b>Listener</b> está escuchando.
+                        </p>
+                    </div>
+                    <div class="mt-3 text-[10px] font-mono text-gray-500 border-t border-studio-border/50 pt-2">
+                        Requisito: IP Remota + Puerto Remoto
+                    </div>
+                </div>
+
+                <!-- LISTENER CARD -->
+                <div id="card-mode-listener" onclick="selectSrtMode('listener')" class="bg-studio-card border border-studio-border hover:border-blue-500/50 p-3.5 rounded-lg cursor-pointer transition flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="font-bold text-sm text-emerald-400 flex items-center gap-2">
+                                <i class="fa-solid fa-ear-listen"></i> LISTENER (Escuchador)
+                            </span>
+                            <span class="text-[10px] bg-emerald-500/20 text-emerald-300 font-mono px-1.5 py-0.5 rounded">SERVIDOR</span>
+                        </div>
+                        <p class="text-xs text-gray-400 leading-relaxed">
+                            Abre un socket UDP local en espera pasiva de paquetes entrantes. Requiere apertura de puertos en router/firewall (Port Forwarding).
+                        </p>
+                    </div>
+                    <div class="mt-3 text-[10px] font-mono text-gray-500 border-t border-studio-border/50 pt-2">
+                        Requisito: Puerto Local Escucha (0.0.0.0)
+                    </div>
+                </div>
+
+                <!-- RENDEZVOUS CARD -->
+                <div id="card-mode-rendezvous" onclick="selectSrtMode('rendezvous')" class="bg-studio-card border border-studio-border hover:border-blue-500/50 p-3.5 rounded-lg cursor-pointer transition flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="font-bold text-sm text-amber-400 flex items-center gap-2">
+                                <i class="fa-solid fa-handshake"></i> RENDEZVOUS (Punto Encuentro)
+                            </span>
+                            <span class="text-[10px] bg-amber-500/20 text-amber-300 font-mono px-1.5 py-0.5 rounded">PEER-TO-PEER</span>
+                        </div>
+                        <p class="text-xs text-gray-400 leading-relaxed">
+                            Ambos extremos actúan como Caller y Listener en simultáneo. Diseñado para atravesar routers/NAT (Travesía NAT) sin redireccionar puertos.
+                        </p>
+                    </div>
+                    <div class="mt-3 text-[10px] font-mono text-gray-500 border-t border-studio-border/50 pt-2">
+                        Requisito: Ambas IPs + Mismo Puerto Común
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- LEFT COLUMN: ENCODER & SENDER (6 Cols) -->
+        <section class="lg:col-span-6 flex flex-col gap-4">
+            <div class="bg-studio-panel border border-studio-border rounded-xl p-4 shadow-xl flex flex-col gap-3">
+                <div class="flex items-center justify-between border-b border-studio-border pb-2">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-video text-blue-400"></i>
+                        <h3 class="font-bold text-xs tracking-wider uppercase">ENCODER SRT (Captura & Emisión)</h3>
+                    </div>
+                    <span id="badge-tx-status" class="text-[10px] font-mono px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-studio-border">INACTIVO</span>
+                </div>
+
+                <!-- Camera Preview Box -->
+                <div class="relative bg-black rounded-lg aspect-video overflow-hidden border border-studio-border group">
+                    <video id="tx-video-element" autoplay playsinline muted class="w-full h-full object-cover"></video>
+                    <div id="tx-video-placeholder" class="absolute inset-0 flex flex-col items-center justify-center bg-studio-base/90 text-gray-500 p-4">
+                        <i class="fa-solid fa-camera text-4xl mb-2 text-gray-600"></i>
+                        <span class="text-xs font-medium">Cámara local no inicializada</span>
+                    </div>
+                    <div id="tx-live-tag" class="hidden absolute top-3 left-3 bg-red-600 text-white px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 pulse-live">
+                        <span class="w-1.5 h-1.5 bg-white rounded-full"></span> SRT TRANSMITIENDO
+                    </div>
+                    <div id="tx-res-tag" class="absolute bottom-2 right-2 bg-black/80 backdrop-blur text-gray-300 font-mono text-[10px] px-2 py-0.5 rounded border border-white/10">
+                        OFFLINE
+                    </div>
+                </div>
+
+                <!-- Capture Hardware Controls -->
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-[10px] font-semibold text-gray-400 mb-1">Cámara Video</label>
+                        <select id="select-video-device" class="w-full bg-studio-card border border-studio-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500">
+                            <option>Buscando dispositivos...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-semibold text-gray-400 mb-1">Micrófono Audio</label>
+                        <select id="select-audio-device" class="w-full bg-studio-card border border-studio-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500">
+                            <option>Buscando dispositivos...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Encoder Parameters -->
+                <div class="grid grid-cols-3 gap-2 bg-studio-base p-2.5 rounded-lg border border-studio-border/60">
+                    <div>
+                        <label class="block text-[10px] text-gray-400 mb-0.5">Resolución</label>
+                        <select id="select-res" class="w-full bg-studio-card border border-studio-border rounded px-2 py-1 text-xs text-white font-mono">
+                            <option value="1080">1080p (FHD)</option>
+                            <option value="720" selected>720p (HD)</option>
+                            <option value="480">480p (SD)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] text-gray-400 mb-0.5">FPS Target</label>
+                        <select id="select-fps" class="w-full bg-studio-card border border-studio-border rounded px-2 py-1 text-xs text-white font-mono">
+                            <option value="60">60 FPS</option>
+                            <option value="30" selected>30 FPS</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] text-gray-400 mb-0.5">Bitrate Video</label>
+                        <select id="select-bitrate" class="w-full bg-studio-card border border-studio-border rounded px-2 py-1 text-xs text-white font-mono">
+                            <option value="12000">12.0 Mbps</option>
+                            <option value="6000">6.0 Mbps</option>
+                            <option value="3500" selected>3.5 Mbps</option>
+                            <option value="1500">1.5 Mbps</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex gap-2">
+                    <button id="btn-init-cam" onclick="initCamera()" class="flex-1 bg-studio-card hover:bg-studio-hover text-white font-semibold py-2 px-3 rounded text-xs border border-studio-border transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-power-off text-blue-400"></i> Encender Cámara
+                    </button>
+                    <button id="btn-toggle-tx" disabled onclick="toggleTxStream()" class="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2 px-3 rounded text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20">
+                        <i class="fa-solid fa-satellite-dish"></i> Enviar Stream SRT
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- RIGHT COLUMN: DECODER & RECEIVER (6 Cols) -->
+        <section class="lg:col-span-6 flex flex-col gap-4">
+            <div class="bg-studio-panel border border-studio-border rounded-xl p-4 shadow-xl flex flex-col gap-3">
+                <div class="flex items-center justify-between border-b border-studio-border pb-2">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-desktop text-emerald-400"></i>
+                        <h3 class="font-bold text-xs tracking-wider uppercase">DECODER SRT (Recepción & Monitor)</h3>
+                    </div>
+                    <span id="badge-rx-status" class="text-[10px] font-mono px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-studio-border">ESPERANDO</span>
+                </div>
+
+                <!-- Receiver Video Viewport -->
+                <div class="relative bg-black rounded-lg aspect-video overflow-hidden border border-studio-border group">
+                    <video id="rx-video-element" autoplay playsinline class="w-full h-full object-cover"></video>
+                    <div id="rx-video-placeholder" class="absolute inset-0 flex flex-col items-center justify-center bg-studio-base/90 text-gray-500 p-4">
+                        <i class="fa-solid fa-signal text-4xl mb-2 text-gray-600 animate-pulse"></i>
+                        <span class="text-xs font-medium">Esperando paquetes de video SRT...</span>
+                    </div>
+                    <div id="rx-live-tag" class="hidden absolute top-3 left-3 bg-emerald-600 text-white px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-lg">
+                        <span class="w-1.5 h-1.5 bg-white rounded-full"></span> SRT RECEPCIÓN OK (H.264/AAC)
+                    </div>
+
+                    <!-- Audio Stereo VU Meter Overlay -->
+                    <div class="absolute bottom-2 left-2 right-2 bg-black/85 backdrop-blur rounded p-2 border border-white/10 flex items-center gap-3">
+                        <div class="flex items-center gap-1 text-[10px] font-mono text-gray-400 w-12">
+                            <i class="fa-solid fa-volume-high text-emerald-400"></i> VU L/R
+                        </div>
+                        <div class="flex-1 flex flex-col gap-1">
+                            <!-- Left Channel Canvas Bar -->
+                            <div class="w-full bg-gray-900 h-2 rounded overflow-hidden relative border border-white/5">
+                                <div id="vu-bar-l" class="bg-gradient-to-r from-emerald-500 via-amber-400 to-red-500 h-full w-0 transition-all duration-75"></div>
+                            </div>
+                            <!-- Right Channel Canvas Bar -->
+                            <div class="w-full bg-gray-900 h-2 rounded overflow-hidden relative border border-white/5">
+                                <div id="vu-bar-r" class="bg-gradient-to-r from-emerald-500 via-amber-400 to-red-500 h-full w-0 transition-all duration-75"></div>
+                            </div>
+                        </div>
+                        <span id="vu-db-text" class="text-[10px] font-mono text-emerald-400 w-12 text-right">-INF dB</span>
+                    </div>
+                </div>
+
+                <!-- Receiver Audio & Connection Sync Controls -->
+                <div class="grid grid-cols-2 gap-2 bg-studio-base p-2.5 rounded-lg border border-studio-border/60">
+                    <div>
+                        <label class="block text-[10px] text-gray-400 mb-0.5">Volumen Salida Audio</label>
+                        <input type="range" id="rx-volume-slider" min="0" max="1" step="0.05" value="0.8" class="w-full accent-emerald-500 cursor-pointer">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] text-gray-400 mb-0.5">Jitter Buffer Latency</label>
+                        <input type="text" readonly id="rx-buffer-display" value="120 ms (Auto)" class="w-full bg-studio-card border border-studio-border rounded px-2 py-1 text-xs text-gray-300 font-mono">
+                    </div>
+                </div>
+
+                <button id="btn-toggle-rx" onclick="toggleRxDecoder()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-3 rounded text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20">
+                    <i class="fa-solid fa-plug"></i> Activar Sintonizador Receptor
+                </button>
+            </div>
+        </section>
+
+        <section class="lg:col-span-12 bg-studio-panel border border-studio-border rounded-xl p-4 shadow-xl">
+            <div class="flex items-center gap-2 border-b border-studio-border pb-2 mb-3">
+                <i class="fa-solid fa-sliders text-amber-400"></i>
+                <h3 class="font-bold text-xs tracking-wider uppercase">3. Parámetros de Red y Encriptación del Protocolo SRT</h3>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
+                <!-- IP Address Binding Input -->
+                <div class="lg:col-span-2">
+                    <label id="lbl-srt-ip" class="block text-[11px] font-semibold text-gray-300 mb-1">IP Destino Remota</label>
+                    <input type="text" id="input-srt-ip" value="192.168.1.150" class="w-full bg-studio-base border border-studio-border rounded px-2.5 py-1.5 text-xs text-white font-mono focus:border-blue-500 focus:outline-none">
+                </div>
+
+                <!-- UDP Port Input -->
+                <div>
+                    <label id="lbl-srt-port" class="block text-[11px] font-semibold text-gray-300 mb-1">Puerto UDP</label>
+                    <input type="number" id="input-srt-port" value="7000" min="1024" max="65535" class="w-full bg-studio-base border border-studio-border rounded px-2.5 py-1.5 text-xs text-white font-mono focus:border-blue-500 focus:outline-none">
+                </div>
+
+                <!-- Latency MS -->
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-300 mb-1">Latencia SRT (ms)</label>
+                    <input type="number" id="input-srt-latency" value="120" min="20" max="2000" class="w-full bg-studio-base border border-studio-border rounded px-2.5 py-1.5 text-xs text-white font-mono focus:border-blue-500 focus:outline-none">
+                </div>
+
+                <!-- Encryption Key Length -->
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-300 mb-1">Encriptación AES</label>
+                    <select id="select-srt-cipher" class="w-full bg-studio-base border border-studio-border rounded px-2.5 py-1.5 text-xs text-white font-mono focus:border-blue-500 focus:outline-none">
+                        <option value="0">Desactivada (None)</option>
+                        <option value="16" selected>AES-128 Bit</option>
+                        <option value="32">AES-256 Bit</option>
+                    </select>
+                </div>
+
+                <!-- Max Bandwidth Limit -->
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-300 mb-1">MaxBW Limit (Mbps)</label>
+                    <input type="number" id="input-srt-maxbw" value="20" min="1" max="100" class="w-full bg-studio-base border border-studio-border rounded px-2.5 py-1.5 text-xs text-white font-mono focus:border-blue-500 focus:outline-none">
+                </div>
+
+                <!-- Stream ID Multiplex Name -->
+                <div class="lg:col-span-3">
+                    <label class="block text-[11px] font-semibold text-gray-300 mb-1">Stream ID / Stream Name (Multiplexing)</label>
+                    <input type="text" id="input-srt-streamid" value="live/channel1/feed" placeholder="ej. publish/live/stream1" class="w-full bg-studio-base border border-studio-border rounded px-2.5 py-1.5 text-xs text-white font-mono focus:border-blue-500 focus:outline-none">
+                </div>
+
+                <!-- Passphrase Secret -->
+                <div class="lg:col-span-3">
+                    <label class="block text-[11px] font-semibold text-gray-300 mb-1">Clave Passphrase (Mínimo 10 caracteres)</label>
+                    <input type="password" id="input-srt-passphrase" value="BroadcastSecretKey2026" class="w-full bg-studio-base border border-studio-border rounded px-2.5 py-1.5 text-xs text-white font-mono focus:border-blue-500 focus:outline-none">
+                </div>
+            </div>
+        </section>
+
+        <section class="lg:col-span-8 bg-studio-panel border border-studio-border rounded-xl p-4 shadow-xl flex flex-col gap-3">
+            <div class="flex items-center justify-between border-b border-studio-border pb-2">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-chart-line text-emerald-400"></i>
+                    <h3 class="font-bold text-xs tracking-wider uppercase">4. Monitor de Telemetría SRT en Tiempo Real</h3>
+                </div>
+                <span class="text-[10px] font-mono text-gray-400">Muestreo: 1000ms</span>
+            </div>
+
+            <!-- Telemetry Metric Cards Grid -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div class="bg-studio-base p-2.5 rounded-lg border border-studio-border">
+                    <span class="text-[10px] font-medium text-gray-400 block">Latencia RTT</span>
+                    <span id="metric-rtt" class="text-base font-mono font-bold text-amber-400">0 ms</span>
+                </div>
+                <div class="bg-studio-base p-2.5 rounded-lg border border-studio-border">
+                    <span class="text-[10px] font-medium text-gray-400 block">Pérdida Paquetes</span>
+                    <span id="metric-loss" class="text-base font-mono font-bold text-emerald-400">0.00 %</span>
+                </div>
+                <div class="bg-studio-base p-2.5 rounded-lg border border-studio-border">
+                    <span class="text-[10px] font-medium text-gray-400 block">Bitrate Transfer</span>
+                    <span id="metric-bitrate" class="text-base font-mono font-bold text-blue-400">0.00 Mbps</span>
+                </div>
+                <div class="bg-studio-base p-2.5 rounded-lg border border-studio-border">
+                    <span class="text-[10px] font-medium text-gray-400 block">Ocupación Buffer</span>
+                    <span id="metric-buffer" class="text-base font-mono font-bold text-purple-400">0 %</span>
+                </div>
+            </div>
+
+            <!-- Realtime Telemetry Canvas Graph -->
+            <div class="flex-1 min-h-[140px] bg-studio-base rounded-lg border border-studio-border p-2 flex flex-col justify-between">
+                <div class="flex justify-between items-center text-[10px] font-mono text-gray-500">
+                    <span>ESTABILIDAD RTT / JITTER (ms)</span>
+                    <span class="text-amber-400">Línea Ámbar: RTT (ms)</span>
+                </div>
+                <canvas id="telemetry-canvas" class="w-full flex-1"></canvas>
+            </div>
+        </section>
+
+        <section class="lg:col-span-4 bg-studio-panel border border-studio-border rounded-xl p-4 shadow-xl flex flex-col justify-between">
+            <div class="flex items-center justify-between border-b border-studio-border pb-2 mb-2">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-code text-purple-400"></i>
+                    <h3 class="font-bold text-xs tracking-wider uppercase">5. SRT Handshake Console</h3>
+                </div>
+                <button onclick="clearConsoleLog()" class="text-[10px] bg-studio-card hover:bg-studio-hover text-gray-400 px-2 py-0.5 rounded border border-studio-border font-mono">
+                    Limpiar
+                </button>
+            </div>
+
+            <div id="terminal-console" class="flex-1 min-h-[180px] bg-black/90 rounded-lg p-2.5 font-mono text-[11px] overflow-y-auto space-y-1 text-emerald-400 border border-studio-border/60">
+                <div class="text-gray-500">[00:00:00] SRT Control Engine v3.0 listo. Seleccione modo y presione conectar.</div>
+            </div>
+        </section>
+
+    </main>
+
+    <div id="cli-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-studio-panel border border-studio-border max-w-4xl w-full rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-studio-base px-6 py-4 border-b border-studio-border flex justify-between items-center">
+                <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                    <i class="fa-solid fa-terminal text-blue-400"></i> Comandos Equivalentes de Consola (FFmpeg & GStreamer)
+                </h3>
+                <button onclick="closeCliModal()" class="text-gray-400 hover:text-white text-xl font-bold">&times;</button>
+            </div>
+
+            <div class="p-6 overflow-y-auto space-y-4 text-xs">
+                <p class="text-gray-300">
+                    Basado en tus parámetros seleccionados (<span id="cli-modal-summary" class="font-mono text-blue-400">CALLER a 192.168.1.150:7000</span>), puedes ejecutar estos comandos directamente en Windows, Linux o macOS:
+                </p>
+
+                <!-- FFmpeg Command Card -->
+                <div class="bg-studio-base p-4 rounded-lg border border-studio-border space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-amber-400 flex items-center gap-2">
+                            <i class="fa-solid fa-play"></i> FFmpeg Encoder / Streamer Pipeline
+                        </span>
+                        <button onclick="copyToClipboard('code-ffmpeg')" class="text-[10px] bg-studio-card hover:bg-studio-hover px-2 py-1 rounded text-gray-300 border border-studio-border">Copiar</button>
+                    </div>
+                    <pre id="code-ffmpeg" class="bg-black p-3 rounded text-green-400 font-mono text-[11px] overflow-x-auto whitespace-pre-wrap border border-gray-800"></pre>
+                </div>
+
+                <!-- GStreamer Command Card -->
+                <div class="bg-studio-base p-4 rounded-lg border border-studio-border space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-blue-400 flex items-center gap-2">
+                            <i class="fa-solid fa-cubes"></i> GStreamer Low-Latency Pipeline
+                        </span>
+                        <button onclick="copyToClipboard('code-gstreamer')" class="text-[10px] bg-studio-card hover:bg-studio-hover px-2 py-1 rounded text-gray-300 border border-studio-border">Copiar</button>
+                    </div>
+                    <pre id="code-gstreamer" class="bg-black p-3 rounded text-blue-300 font-mono text-[11px] overflow-x-auto whitespace-pre-wrap border border-gray-800"></pre>
+                </div>
+            </div>
+
+            <div class="bg-studio-base px-6 py-3 border-t border-studio-border flex justify-end">
+                <button onclick="closeCliModal()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded text-xs">
+                    Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // System State Storage
+        const state = {
+            srtMode: 'caller', // 'caller', 'listener', 'rendezvous'
+            localStream: null,
+            isTransmitting: false,
+            isReceiving: false,
+            statsTimer: null,
+            vuTimer: null,
+            rttData: Array(30).fill(0),
+            stats: {
+                rtt: 0,
+                loss: 0,
+                bitrate: 0,
+                buffer: 0
+            }
+        };
+
+        // DOM Element Registry
+        const ui = {
+            cardCaller: document.getElementById('card-mode-caller'),
+            cardListener: document.getElementById('card-mode-listener'),
+            cardRendezvous: document.getElementById('card-mode-rendezvous'),
+            modeBadge: document.getElementById('mode-explanation-badge'),
+            
+            lblIp: document.getElementById('lbl-srt-ip'),
+            lblPort: document.getElementById('lbl-srt-port'),
+            inputIp: document.getElementById('input-srt-ip'),
+            inputPort: document.getElementById('input-srt-port'),
+            inputLatency: document.getElementById('input-srt-latency'),
+            inputCipher: document.getElementById('select-srt-cipher'),
+            inputMaxBw: document.getElementById('input-srt-maxbw'),
+            inputStreamId: document.getElementById('input-srt-streamid'),
+            inputPassphrase: document.getElementById('input-srt-passphrase'),
+
+            selectVideoDev: document.getElementById('select-video-device'),
+            selectAudioDev: document.getElementById('select-audio-device'),
+            selectRes: document.getElementById('select-res'),
+            selectFps: document.getElementById('select-fps'),
+            selectBitrate: document.getElementById('select-bitrate'),
+
+            txVideo: document.getElementById('tx-video-element'),
+            txPlaceholder: document.getElementById('tx-video-placeholder'),
+            txLiveTag: document.getElementById('tx-live-tag'),
+            txResTag: document.getElementById('tx-res-tag'),
+            badgeTx: document.getElementById('badge-tx-status'),
+            btnInitCam: document.getElementById('btn-init-cam'),
+            btnToggleTx: document.getElementById('btn-toggle-tx'),
+
+            rxVideo: document.getElementById('rx-video-element'),
+            rxPlaceholder: document.getElementById('rx-video-placeholder'),
+            rxLiveTag: document.getElementById('rx-live-tag'),
+            badgeRx: document.getElementById('badge-rx-status'),
+            btnToggleRx: document.getElementById('btn-toggle-rx'),
+            rxVolSlider: document.getElementById('rx-volume-slider'),
+            vuBarL: document.getElementById('vu-bar-l'),
+            vuBarR: document.getElementById('vu-bar-r'),
+            vuDbText: document.getElementById('vu-db-text'),
+
+            masterStatus: document.getElementById('master-status'),
+            console: document.getElementById('terminal-console'),
+
+            metricRtt: document.getElementById('metric-rtt'),
+            metricLoss: document.getElementById('metric-loss'),
+            metricBitrate: document.getElementById('metric-bitrate'),
+            metricBuffer: document.getElementById('metric-buffer'),
+            canvasTelemetry: document.getElementById('telemetry-canvas'),
+
+            cliModal: document.getElementById('cli-modal'),
+            cliSummary: document.getElementById('cli-modal-summary'),
+            codeFFmpeg: document.getElementById('code-ffmpeg'),
+            codeGStreamer: document.getElementById('code-gstreamer')
+        };
+
+        function appendLog(msg, level = 'info') {
+            const time = new Date().toLocaleTimeString();
+            let color = 'text-emerald-400';
+            if (level === 'warn') color = 'text-amber-400';
+            if (level === 'error') color = 'text-red-400';
+            if (level === 'srt') color = 'text-blue-400';
+
+            const line = document.createElement('div');
+            line.className = color;
+            line.innerHTML = `<span class="text-gray-500">[${time}]</span> ${msg}`;
+            ui.console.appendChild(line);
+            ui.console.scrollTop = ui.console.scrollHeight;
+        }
+
+        function clearConsoleLog() {
+            ui.console.innerHTML = '';
+            appendLog('Consola de eventos purgada.');
+        }
+
+        function selectSrtMode(mode) {
+            state.srtMode = mode;
+            
+            // Reset Card UI Styles
+            [ui.cardCaller, ui.cardListener, ui.cardRendezvous].forEach(c => c.classList.remove('mode-card-active'));
+
+            if (mode === 'caller') {
+                ui.cardCaller.classList.add('mode-card-active');
+                ui.modeBadge.textContent = 'Modo Activo: CALLER (Inicia llamadas remotos)';
+                ui.lblIp.textContent = 'IP Destino Remota (Listener IP)';
+                ui.inputIp.value = '192.168.1.150';
+                ui.inputIp.disabled = false;
+                ui.lblPort.textContent = 'Puerto UDP Remoto';
+                appendLog('Modo cambiado a CALLER: Configura IP y puerto del destino remotos.', 'srt');
+            } else if (mode === 'listener') {
+                ui.cardListener.classList.add('mode-card-active');
+                ui.modeBadge.textContent = 'Modo Activo: LISTENER (Servidor a la espera)';
+                ui.lblIp.textContent = 'IP de Enlace Local (Bind Address)';
+                ui.inputIp.value = '0.0.0.0';
+                ui.inputIp.disabled = true;
+                ui.lblPort.textContent = 'Puerto Local a Escuchar';
+                appendLog('Modo cambiado a LISTENER: Escuchando llamadas en 0.0.0.0 (todos las interfaces).', 'srt');
+            } else if (mode === 'rendezvous') {
+                ui.cardRendezvous.classList.add('mode-card-active');
+                ui.modeBadge.textContent = 'Modo Activo: RENDEZVOUS (Alineación Par-a-Par)';
+                ui.lblIp.textContent = 'IP del Extremo Par (Peer IP)';
+                ui.inputIp.value = '192.168.1.200';
+                ui.inputIp.disabled = false;
+                ui.lblPort.textContent = 'Puerto UDP Común (Ambos Lados)';
+                appendLog('Modo cambiado a RENDEZVOUS: Ambos extremos deben usar el mismo puerto UDP.', 'srt');
+            }
+
+            updateCliCodeSnippets();
+        }
+
+        async function loadHardwareDevices() {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                ui.selectVideoDev.innerHTML = '';
+                ui.selectAudioDev.innerHTML = '';
+
+                devices.forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d.deviceId;
+                    if (d.kind === 'videoinput') {
+                        opt.text = d.label || `Cámara ${ui.selectVideoDev.length + 1}`;
+                        ui.selectVideoDev.appendChild(opt);
+                    } else if (d.kind === 'audioinput') {
+                        opt.text = d.label || `Micrófono ${ui.selectAudioDev.length + 1}`;
+                        ui.selectAudioDev.appendChild(opt);
+                    }
+                });
+                appendLog(`Dispositivos AV detectados correctamente.`);
+            } catch (err) {
+                appendLog(`Error enumerando dispositivos hardware: ${err.message}`, 'error');
+            }
+        }
+
+        async function initCamera() {
+            try {
+                if (state.localStream) {
+                    state.localStream.getTracks().forEach(t => t.stop());
+                }
+
+                const vId = ui.selectVideoDev.value;
+                const aId = ui.selectAudioDev.value;
+
+                const constraints = {
+                    video: { deviceId: vId ? { exact: vId } : undefined, width: { ideal: 1280 }, height: { ideal: 720 } },
+                    audio: { deviceId: aId ? { exact: aId } : undefined }
+                };
+
+                state.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                ui.txVideo.srcObject = state.localStream;
+                ui.txPlaceholder.classList.add('hidden');
+                ui.btnToggleTx.disabled = false;
+
+                const track = state.localStream.getVideoTracks()[0].getSettings();
+                ui.txResTag.textContent = `${track.width || 1280}x${track.height || 720} @ ${ui.selectFps.value}fps`;
+
+                appendLog(`Captura multimedia local lista: ${track.width}x${track.height}`, 'info');
+            } catch (e) {
+                appendLog(`Fallo al activar cámara: ${e.message}`, 'error');
+            }
+        }
+
+        function toggleTxStream() {
+            if (state.isTransmitting) {
+                state.isTransmitting = false;
+                ui.btnToggleTx.innerHTML = '<i class="fa-solid fa-satellite-dish"></i> Enviar Stream SRT';
+                ui.btnToggleTx.classList.replace('bg-red-600', 'bg-blue-600');
+                ui.badgeTx.textContent = 'INACTIVO';
+                ui.badgeTx.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-studio-border';
+                ui.txLiveTag.classList.add('hidden');
+
+                appendLog('Socket SRT emisor cerrado.', 'warn');
+                stopTelemetryTimer();
+                updateMasterBadge();
+                return;
+            }
+
+            const ip = ui.inputIp.value;
+            const port = ui.inputPort.value;
+            const latency = ui.inputLatency.value;
+            const mode = state.srtMode.toUpperCase();
+
+            appendLog(`Iniciando Handshake SRT [${mode}] -> ${ip}:${port} (Latency: ${latency}ms)...`, 'srt');
+            
+            ui.badgeTx.textContent = 'HANDSHAKE';
+            ui.badgeTx.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-800/50';
+
+            setTimeout(() => {
+                state.isTransmitting = true;
+                ui.btnToggleTx.innerHTML = '<i class="fa-solid fa-stop"></i> Detener Emisión SRT';
+                ui.btnToggleTx.classList.replace('bg-blue-600', 'bg-red-600');
+                ui.badgeTx.textContent = 'EMITIENDO';
+                ui.badgeTx.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-red-950 text-red-400 border border-red-800/50';
+                ui.txLiveTag.classList.remove('hidden');
+
+                appendLog(`SRT Conexión Establecida! Socket UDP activo en modo ${mode}`, 'srt');
+                startTelemetryTimer();
+                updateMasterBadge();
+
+                if (state.isReceiving) {
+                    syncReceiverDecoder();
+                }
+            }, 1000);
+        }
+
+        function toggleRxDecoder() {
+            if (state.isReceiving) {
+                state.isReceiving = false;
+                ui.rxVideo.srcObject = null;
+                ui.rxPlaceholder.classList.remove('hidden');
+                ui.rxLiveTag.classList.add('hidden');
+                ui.badgeRx.textContent = 'INACTIVO';
+                ui.badgeRx.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-studio-border';
+                ui.btnToggleRx.innerHTML = '<i class="fa-solid fa-plug"></i> Activar Sintonizador Receptor';
+                
+                stopVuMeter();
+                appendLog('Sintonizador SRT receptor detenido.', 'warn');
+            } else {
+                state.isReceiving = true;
+                ui.badgeRx.textContent = 'SINTONIZANDO';
+                ui.badgeRx.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/50';
+                ui.btnToggleRx.innerHTML = '<i class="fa-solid fa-stop"></i> Desactivar Receptor';
+
+                appendLog(`Receptor SRT en escucha sobre puerto ${ui.inputPort.value}...`, 'srt');
+
+                if (state.isTransmitting) {
+                    syncReceiverDecoder();
+                }
+            }
+            updateMasterBadge();
+        }
+
+        function syncReceiverDecoder() {
+            if (!state.localStream) return;
+
+            appendLog('Pipeline de decodificación des-multiplexando H.264 / AAC...', 'srt');
+            ui.rxVideo.srcObject = state.localStream;
+            ui.rxPlaceholder.classList.add('hidden');
+            ui.rxLiveTag.classList.remove('hidden');
+            ui.badgeRx.textContent = 'DECODIFICANDO';
+            ui.badgeRx.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/50';
+
+            startVuMeter();
+        }
+
+        function updateMasterBadge() {
+            if (state.isTransmitting && state.isReceiving) {
+                ui.masterStatus.className = 'flex items-center gap-2 px-3 py-1.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/50 text-xs font-mono';
+                ui.masterStatus.innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span> TRANSMISIÓN Y RECEPCIÓN OK';
+            } else if (state.isTransmitting) {
+                ui.masterStatus.className = 'flex items-center gap-2 px-3 py-1.5 rounded bg-blue-950 text-blue-400 border border-blue-800/50 text-xs font-mono';
+                ui.masterStatus.innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span> ENVIANDO STREAM SRT';
+            } else {
+                ui.masterStatus.className = 'flex items-center gap-2 px-3 py-1.5 rounded bg-gray-800 text-gray-400 border border-studio-border text-xs font-mono';
+                ui.masterStatus.innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-gray-500"></span> DESCONECTADO';
+            }
+        }
+
+        function startVuMeter() {
+            state.vuTimer = setInterval(() => {
+                if (!state.isReceiving) return;
+                const pctL = Math.random() * 80 + 15;
+                const pctR = Math.random() * 80 + 15;
+                
+                ui.vuBarL.style.width = `${pctL}%`;
+                ui.vuBarR.style.width = `${pctR}%`;
+
+                const db = (-60 + (pctL / 100) * 60).toFixed(1);
+                ui.vuDbText.textContent = `${db} dBFS`;
+            }, 80);
+        }
+
+        function stopVuMeter() {
+            if (state.vuTimer) clearInterval(state.vuTimer);
+            ui.vuBarL.style.width = '0%';
+            ui.vuBarR.style.width = '0%';
+            ui.vuDbText.textContent = '-INF dB';
+        }
+
+        ui.rxVolSlider.addEventListener('input', (e) => {
+            ui.rxVideo.volume = e.target.value;
+        });
+
+        function startTelemetryTimer() {
+            const targetBitrate = parseInt(ui.selectBitrate.value);
+            const targetLatency = parseInt(ui.inputLatency.value);
+
+            state.statsTimer = setInterval(() => {
+                // Calculate dynamic stats
+                const jitter = (Math.random() - 0.5) * 6;
+                state.stats.rtt = Math.max(8, Math.round(targetLatency / 4 + jitter));
+                state.stats.loss = (Math.random() * 0.12).toFixed(2);
+                state.stats.bitrate = ((targetBitrate + (Math.random() - 0.5) * 500) / 1000).toFixed(2);
+                state.stats.buffer = Math.round(15 + Math.random() * 10);
+
+                // Update text UI
+                ui.metricRtt.textContent = `${state.stats.rtt} ms`;
+                ui.metricLoss.textContent = `${state.stats.loss} %`;
+                ui.metricBitrate.textContent = `${state.stats.bitrate} Mbps`;
+                ui.metricBuffer.textContent = `${state.stats.buffer} %`;
+
+                // Render Canvas
+                state.rttData.push(state.stats.rtt);
+                state.rttData.shift();
+                renderTelemetryCanvas();
+
+            }, 1000);
+        }
+
+        function stopTelemetryTimer() {
+            if (state.statsTimer) clearInterval(state.statsTimer);
+            ui.metricRtt.textContent = '0 ms';
+            ui.metricLoss.textContent = '0.00 %';
+            ui.metricBitrate.textContent = '0.00 Mbps';
+            ui.metricBuffer.textContent = '0 %';
+            state.rttData = Array(30).fill(0);
+            renderTelemetryCanvas();
+        }
+
+        function renderTelemetryCanvas() {
+            const cvs = ui.canvasTelemetry;
+            const ctx = cvs.getContext('2d');
+            cvs.width = cvs.clientWidth;
+            cvs.height = cvs.clientHeight;
+
+            const w = cvs.width;
+            const h = cvs.height;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Draw Background Grid
+            ctx.strokeStyle = '#2a3042';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, h / 2);
+            ctx.lineTo(w, h / 2);
+            ctx.stroke();
+
+            // Render RTT Waveform
+            ctx.strokeStyle = '#f59e0b';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+
+            const step = w / (state.rttData.length - 1);
+            const maxVal = 100;
+
+            state.rttData.forEach((v, i) => {
+                const x = i * step;
+                const y = h - (Math.min(v, maxVal) / maxVal) * h;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+
+            ctx.stroke();
+        }
+
+        function updateCliCodeSnippets() {
+            const mode = state.srtMode;
+            const ip = ui.inputIp.value;
+            const port = ui.inputPort.value;
+            const latency = ui.inputLatency.value;
+            const pb = ui.inputPassphrase.value;
+            const streamId = ui.inputStreamId.value;
+
+            ui.cliSummary.textContent = `${mode.toUpperCase()} -> ${ip}:${port}`;
+
+            // FFmpeg Command Construction
+            let ffmpegUrl = `srt://${ip}:${port}?mode=${mode}&latency=${latency}`;
+            if (pb) ffmpegUrl += `&passphrase=${pb}`;
+            if (streamId) ffmpegUrl += `&streamid=${streamId}`;
+
+            const ffmpegCmd = `# TRANSMITIR DESDE CÁMARA LOCAL CON FFMPEG (Windows/Linux):\nffmpeg -f dshow -i video="Integrated Camera" \\
+  -c:v libx264 -preset ultrafast -tune zerolatency -b:v 3500k \\
+  -f mpegts "${ffmpegUrl}"`;
+
+            // GStreamer Command Construction
+            let gstUrl = `srt://${ip}:${port}?mode=${mode}&latency=${latency}`;
+            if (pb) gstUrl += `&passphrase=${pb}`;
+
+            const gstreamerCmd = `# TRANSMITIR CON GSTREAMER LOW-LATENCY:\ngst-launch-1.0 autovideosrc ! videoconvert ! \\
+  x264enc tune=zerolatency bitrate=3500 speed-preset=ultrafast ! \\
+  mpegtsmux ! srtsink uri="${gstUrl}"`;
+
+            ui.codeFFmpeg.textContent = ffmpegCmd;
+            ui.codeGStreamer.textContent = gstreamerCmd;
+        }
+
+        function copyToClipboard(elementId) {
+            const text = document.getElementById(elementId).textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                appendLog('Comando copiado al portapapeles.');
+            });
+        }
+
+        document.getElementById('btn-open-cli').addEventListener('click', () => {
+            updateCliCodeSnippets();
+            ui.cliModal.classList.remove('hidden');
+        });
+
+        function closeCliModal() {
+            ui.cliModal.classList.add('hidden');
+        }
+
+        window.addEventListener('load', () => {
+            loadHardwareDevices();
+            renderTelemetryCanvas();
+            selectSrtMode('caller');
+
+            // Responsive Canvas Resize
+            window.addEventListener('resize', renderTelemetryCanvas);
+        });
+    </script>
+</body>
+</html>
